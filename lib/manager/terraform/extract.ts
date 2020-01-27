@@ -2,6 +2,7 @@ import { logger } from '../../logger';
 import { isValid, isVersion } from '../../versioning/hashicorp';
 import { PackageDependency, PackageFile } from '../common';
 import {
+  DATASOURCE_GIT_TAGS,
   DATASOURCE_GITHUB,
   DATASOURCE_TERRAFORM,
   DATASOURCE_TERRAFORM_PROVIDER,
@@ -55,8 +56,8 @@ export function extractPackageFile(content: string): PackageFile | null {
         };
         if (tfDepType === TerraformDependencyTypes.unknown) {
           /* istanbul ignore next */ logger.trace(
-            `Could not identify TerraformDependencyType ${terraformDependency[1]} on line ${lineNumber}.`
-          );
+          `Could not identify TerraformDependencyType ${terraformDependency[1]} on line ${lineNumber}.`
+        );
         } else {
           do {
             lineNumber += 1;
@@ -88,6 +89,11 @@ export function extractPackageFile(content: string): PackageFile | null {
       const githubRefMatch =
         dep.source &&
         dep.source.match(/github.com(\/|:)([^/]+\/[a-z0-9-]+).*\?ref=(.*)$/);
+      const gitTagsRefMatch =
+        dep.source &&
+        dep.source.match(
+          /git::((http|https):\/\/(bitbucket.contoso.com)(\/|:)(scm\/)([^\/]+\/[a-z0-9-_]+)).*\?ref=(.*)$/ // TODO: how do we generalize this regex for the various git platforms?
+        );
       /* eslint-disable no-param-reassign */
       if (githubRefMatch) {
         dep.depType = 'github';
@@ -100,7 +106,17 @@ export function extractPackageFile(content: string): PackageFile | null {
         if (!isVersion(dep.currentValue)) {
           dep.skipReason = 'unsupported-version';
         }
-      } else if (dep.source) {
+      } else if (gitTagsRefMatch) {
+        dep.depType = 'gitTags';
+        dep.depName = gitTagsRefMatch[6];
+        dep.depNameShort = gitTagsRefMatch[6];
+        dep.currentValue = gitTagsRefMatch[7];
+        dep.datasource = DATASOURCE_GIT_TAGS;
+        dep.lookupName = gitTagsRefMatch[1];
+        dep.managerData.lineNumber = dep.sourceLine;
+        if (!isVersion(dep.currentValue)) {
+          dep.skipReason = 'unsupported-version';
+        }
         const moduleParts = dep.source.split('//')[0].split('/');
         if (moduleParts[0] === '..') {
           dep.skipReason = 'local';
